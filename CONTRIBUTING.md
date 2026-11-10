@@ -1,4 +1,4 @@
-# AGENTS.md — conventions for anyone (human or agent) working in this repo
+# Contributing — conventions for working in this repo
 
 Read `docs/PRD.md` first. The Express reference implementation lives at
 `../portofolio-api/src` (read-only, never edit it). Behaviour, status codes and

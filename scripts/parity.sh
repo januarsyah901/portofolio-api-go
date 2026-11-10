@@ -16,6 +16,9 @@ pass=0
 fail=0
 
 norm() { jq -S . 2>/dev/null || cat; }
+# Express leaves the order of rows with equal sort keys unspecified; Go breaks ties by id.
+# Use UNORDERED=1 for lists that may contain such ties.
+normu() { jq -S 'if type == "array" then sort_by(.id) else . end' 2>/dev/null || cat; }
 
 # compare METHOD PATH [BODY] [AUTH_HEADER]
 compare() {
@@ -26,7 +29,9 @@ compare() {
   local ra rb sa sb
   ra=$(curl "${args[@]}" "$A$path"); sa=${ra##*$'\n'}; ra=${ra%$'\n'*}
   rb=$(curl "${args[@]}" "$B$path"); sb=${rb##*$'\n'}; rb=${rb%$'\n'*}
-  if [[ $sa == "$sb" && "$(norm <<<"$ra")" == "$(norm <<<"$rb")" ]]; then
+  local n=norm
+  [[ ${UNORDERED:-0} == 1 ]] && n=normu
+  if [[ $sa == "$sb" && "$($n <<<"$ra")" == "$($n <<<"$rb")" ]]; then
     pass=$((pass + 1))
     printf '  ok    %-6s %-45s %s\n' "$method" "$path" "$sa"
   else
@@ -40,7 +45,9 @@ check() { # check DESCRIPTION CONDITION_EXIT_CODE
   if [[ $2 -eq 0 ]]; then pass=$((pass + 1)); echo "  ok    $1"; else fail=$((fail + 1)); echo "  FAIL  $1"; fi
 }
 
-login() { curl -s -X POST -H 'Content-Type: application/json' --data '{"username":"admin","password":"admin123"}' "$1/api/auth/login" | jq -r .token; }
+PARITY_USER=${PARITY_USER:-admin}
+PARITY_PASS=${PARITY_PASS:-admin123}
+login() { curl -s -X POST -H "Content-Type: application/json" --data "{\"username\":\"$PARITY_USER\",\"password\":\"$PARITY_PASS\"}" "$1/api/auth/login" | jq -r .token; }
 
 echo "== 1. public + admin reads"
 TA=$(login "$A")
@@ -81,9 +88,9 @@ compare DELETE /api/admin/tokens/999999 "" "Bearer $TA"
 
 echo "== 3. credential cross-compatibility"
 TB=$(login "$B")
-curl -sf -H "Authorization: Bearer $TA" "$B/api/auth/me" | jq -e '.username=="admin"' >/dev/null
+curl -sf -H "Authorization: Bearer $TA" "$B/api/auth/me" | jq -e --arg u "$PARITY_USER" '.username==$u' >/dev/null
 check "JWT issued by Express accepted by Go" $?
-curl -sf -H "Authorization: Bearer $TB" "$A/api/auth/me" | jq -e '.username=="admin"' >/dev/null
+curl -sf -H "Authorization: Bearer $TB" "$A/api/auth/me" | jq -e --arg u "$PARITY_USER" '.username==$u' >/dev/null
 check "JWT issued by Go accepted by Express" $?
 PF=$(curl -s -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $TA" --data '{"name":"parity","scope":"read"}' "$A/api/admin/tokens" | jq -r .token)
 compare GET /api/projects/admin-list "" "Bearer $PF"
@@ -105,7 +112,7 @@ compare GET /api/projects/parity-check-2
 compare POST /api/projects '{"title":"z","description":"z","slug":"parity-check"}' "Bearer $TA"
 curl -s -X PUT -H 'Content-Type: application/json' -H "Authorization: Bearer $TA" \
   --data '{"year":"","role":"Tester","visible":false}' "$A/api/projects/$NID" >/dev/null
-compare GET /api/projects/admin-list "" "Bearer $TA"
+UNORDERED=1 compare GET /api/projects/admin-list "" "Bearer $TA"
 IDS=$(curl -s -H "Authorization: Bearer $TA" "$A/api/projects/admin-list" | jq -c '[.[].id] | reverse')
 curl -s -X PUT -H 'Content-Type: application/json' -H "Authorization: Bearer $TB" --data "{\"orderedIds\":$IDS}" "$B/api/projects/reorder" >/dev/null
 compare GET /api/projects

@@ -208,7 +208,7 @@ Target coverage paket `validate`/`auth` ≥ 90%.
 | M4 · Ops & docs | Dockerfile, CI, OpenAPI, README, integration test | `make test-integration` lulus, image ter-build |
 | M5 · Paritas | Uji `portofolio-web` lokal terhadap API Go | Frontend berjalan tanpa perubahan |
 
-M1, M2, dan M3 dikerjakan paralel setelah M0, masing-masing oleh worker Orca di worktree terpisah.
+M1, M2, dan M3 bisa dikerjakan paralel setelah M0 karena setiap modul berada di paket terpisah.
 
 ## 11. Kriteria penerimaan
 1. Semua endpoint di bagian 4 tersedia dengan status code dan pesan yang sama dengan versi Express.
@@ -224,5 +224,5 @@ M1, M2, dan M3 dikerjakan paralel setelah M0, masing-masing oleh worker Orca di 
 |---|---|
 | Perbedaan serialisasi JSON (null vs omitted, format waktu) | Tidak memakai `omitempty` pada field model; test snapshot JSON; skrip paritas. |
 | Prisma menambah migrasi baru di repo lama | `migrations/` disinkronkan manual; README menjelaskan prosesnya. |
-| Merge conflict antar worker paralel | Setiap worker hanya menyentuh paket miliknya; registrasi route sudah disiapkan di M0. |
+| Merge conflict saat modul dikerjakan paralel | Setiap modul hanya menyentuh paketnya sendiri; registrasi route sudah disiapkan di M0. |
 | Perilaku "lenient" versi lama sulit direplikasi persis di Go yang bertipe statis | Decode body ke `map[string]json.RawMessage` lalu periksa tipe per field. |

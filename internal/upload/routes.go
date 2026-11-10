@@ -1,4 +1,4 @@
-// Package upload implements: Image and CV uploads (/api/admin/upload) plus static files. Owner: worker M3.
+// Package upload implements: Image and CV uploads (/api/admin/upload) plus static files.
 // See docs/PRD.md for the full contract.
 package upload
 

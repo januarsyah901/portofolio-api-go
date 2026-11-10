@@ -1,4 +1,4 @@
-// Package sitecontent implements: Site content (/api/site-content). Owner: worker M3.
+// Package sitecontent implements: Site content (/api/site-content).
 // See docs/PRD.md for the full contract.
 package sitecontent
 
