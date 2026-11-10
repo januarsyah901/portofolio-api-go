@@ -20,6 +20,6 @@ func (s PGTokenStore) FindByHash(ctx context.Context, hash string) (APIToken, er
 
 // TouchLastUsed sets lastUsedAt to now.
 func (s PGTokenStore) TouchLastUsed(ctx context.Context, id int) error {
-	_, err := s.DB.Exec(ctx, `UPDATE "ApiToken" SET "lastUsedAt" = now() WHERE "id" = $1`, id)
+	_, err := s.DB.Exec(ctx, `UPDATE "ApiToken" SET "lastUsedAt" = now() AT TIME ZONE 'UTC' WHERE "id" = $1`, id)
 	return err
 }
