@@ -20,9 +20,20 @@ func (f Fields) IsNull(key string) bool {
 	return ok && string(raw) == "null"
 }
 
+// value returns the raw JSON for key, treating a missing key and JSON null alike.
+// json.Unmarshal of null into a string/bool/number is a silent no-op, so without this
+// guard `"visible": null` would read as a valid false.
+func (f Fields) value(key string) (json.RawMessage, bool) {
+	raw, ok := f[key]
+	if !ok || string(raw) == "null" {
+		return nil, false
+	}
+	return raw, true
+}
+
 // String returns the value when it is a JSON string.
 func (f Fields) String(key string) (string, bool) {
-	raw, ok := f[key]
+	raw, ok := f.value(key)
 	if !ok {
 		return "", false
 	}
@@ -35,7 +46,7 @@ func (f Fields) String(key string) (string, bool) {
 
 // Bool returns the value when it is a JSON boolean.
 func (f Fields) Bool(key string) (bool, bool) {
-	raw, ok := f[key]
+	raw, ok := f.value(key)
 	if !ok {
 		return false, false
 	}
@@ -48,7 +59,7 @@ func (f Fields) Bool(key string) (bool, bool) {
 
 // Number returns the value when it is a JSON number (like typeof x === 'number').
 func (f Fields) Number(key string) (float64, bool) {
-	raw, ok := f[key]
+	raw, ok := f.value(key)
 	if !ok {
 		return 0, false
 	}
@@ -71,7 +82,7 @@ func (f Fields) Int(key string) (int, bool) {
 
 // StringSlice returns the value when it is a JSON array whose items are all strings.
 func (f Fields) StringSlice(key string) ([]string, bool) {
-	raw, ok := f[key]
+	raw, ok := f.value(key)
 	if !ok {
 		return nil, false
 	}

@@ -28,6 +28,9 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse DATABASE_URL: %w", err)
 	}
+	// Prisma stores TIMESTAMP(3) WITHOUT TIME ZONE values in UTC. Pin the session time
+	// zone so now() and CURRENT_TIMESTAMP column defaults agree with it on any server.
+	cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)
