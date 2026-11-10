@@ -1,5 +1,4 @@
-// Package project implements: Projects (/api/projects). Owner: worker M2.
-// See docs/PRD.md for the full contract.
+// Package project implements Projects (/api/projects). See docs/PRD.md section 4.3.
 package project
 
 import (
@@ -10,7 +9,12 @@ import (
 
 // Register mounts this module's routes on mux.
 func Register(mux *http.ServeMux, d app.Deps) {
-	_ = mux
-	_ = d
-	// TODO: implement (see docs/PRD.md section 4).
+	h := NewHandler(newPgRepo(d.Pool))
+	mux.HandleFunc("GET /api/projects", h.listPublic)
+	mux.Handle("GET /api/projects/admin-list", d.Guards.AdminOrRead(http.HandlerFunc(h.listAdmin)))
+	mux.Handle("POST /api/projects", d.Guards.AdminOrWrite(http.HandlerFunc(h.create)))
+	mux.Handle("PUT /api/projects/reorder", d.Guards.AdminOrWrite(http.HandlerFunc(h.reorder)))
+	mux.HandleFunc("GET /api/projects/{slug}", h.getBySlug)
+	mux.Handle("PUT /api/projects/{id}", d.Guards.AdminOrWrite(http.HandlerFunc(h.update)))
+	mux.Handle("DELETE /api/projects/{id}", d.Guards.AdminOrWrite(http.HandlerFunc(h.delete)))
 }
