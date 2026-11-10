@@ -24,7 +24,7 @@ vet:
 	$(GO) vet ./...
 
 lint: vet
-	@command -v golangci-lint >/dev/null && golangci-lint run || echo "golangci-lint not installed, ran go vet only"
+	@command -v golangci-lint >/dev/null && golangci-lint run ./... || echo "golangci-lint v2 not installed: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0"
 
 fmt:
 	gofmt -s -w .

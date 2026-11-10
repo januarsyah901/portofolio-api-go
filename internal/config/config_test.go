@@ -56,3 +56,16 @@ func TestProductionHasNoDefaultCORS(t *testing.T) {
 		t.Errorf("production should not default CORS origins, got %v", cfg.CORSOrigins)
 	}
 }
+
+func TestTrustedProxies(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": strings.Repeat("a", 32)}
+	base["TRUSTED_PROXIES"] = "172.18.0.0/16, 10.0.0.1"
+	cfg, err := load(env(base))
+	if err != nil || len(cfg.TrustedProxies) != 2 || cfg.TrustedProxies[1].String() != "10.0.0.1/32" {
+		t.Fatalf("got %v, %v", cfg.TrustedProxies, err)
+	}
+	base["TRUSTED_PROXIES"] = "not-a-cidr"
+	if _, err := load(env(base)); err == nil || !strings.Contains(err.Error(), "TRUSTED_PROXIES") {
+		t.Fatalf("expected TRUSTED_PROXIES error, got %v", err)
+	}
+}

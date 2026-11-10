@@ -170,7 +170,7 @@ func (h *Handler) googleEmail(ctx context.Context, accessToken string) (string, 
 	if err != nil {
 		return "", 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		return "", http.StatusUnauthorized, nil

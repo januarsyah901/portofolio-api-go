@@ -6,6 +6,7 @@ import (
 
 	"github.com/januarsyah901/portofolio-api-go/internal/app"
 	"github.com/januarsyah901/portofolio-api-go/internal/auth"
+	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
 )
 
 // Register mounts the auth routes. Login and google-verify are rate limited per client IP.
@@ -21,7 +22,9 @@ func Register(mux *http.ServeMux, d app.Deps) {
 		client:    &http.Client{Timeout: googleTimeout},
 		googleURL: googleUserinfoURL,
 	}
-	h.routes(mux, d.Guards, newLimiter())
+	rl := newLimiter()
+	rl.ip = httpx.ClientIP{Trusted: d.Config.TrustedProxies}.Resolve
+	h.routes(mux, d.Guards, rl)
 }
 
 func (h *Handler) routes(mux *http.ServeMux, g auth.Guards, rl *limiter) {

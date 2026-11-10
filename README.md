@@ -72,7 +72,7 @@ make run                      # http://localhost:3001/api/health
 
 Configuration (environment): `PORT`, `DATABASE_URL` (Prisma-style `?schema=public` is accepted),
 `JWT_SECRET`, `CORS_ORIGINS`, `ADMIN_EMAILS`, `PUBLIC_DIR`, `LOG_FORMAT` (`text|json`),
-`APP_ENV` (`development|production`).
+`APP_ENV` (`development|production`), `TRUSTED_PROXIES` (reverse-proxy CIDRs whose `X-Forwarded-For` is trusted for per-client rate limiting).
 
 The API is documented in [`docs/openapi.yaml`](docs/openapi.yaml), and the full product
 requirements are in [`docs/PRD.md`](docs/PRD.md).

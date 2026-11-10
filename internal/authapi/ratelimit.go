@@ -34,6 +34,8 @@ type limiter struct {
 	buckets   map[string]*bucket
 	now       func() time.Time
 	lastSweep time.Time
+	// ip picks the bucket key; nil means the TCP peer address.
+	ip func(*http.Request) string
 }
 
 func newLimiter() *limiter {
@@ -90,8 +92,8 @@ func (l *limiter) size() int {
 	return len(l.buckets)
 }
 
-// clientIP keys by the TCP peer address. X-Forwarded-For is deliberately ignored
-// because it is client-controlled.
+// clientIP keys by the TCP peer address. It is the default when no trusted proxy is
+// configured; X-Forwarded-For is client-controlled and ignored here.
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -103,7 +105,11 @@ func clientIP(r *http.Request) string {
 // middleware rejects over-budget clients with 429.
 func (l *limiter) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !l.allow(clientIP(r)) {
+		key := clientIP(r)
+		if l.ip != nil {
+			key = l.ip(r)
+		}
+		if !l.allow(key) {
 			w.Header().Set("Retry-After", "12")
 			httpx.Error(w, http.StatusTooManyRequests, MsgTooManyAttempts)
 			return

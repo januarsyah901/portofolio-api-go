@@ -38,13 +38,13 @@ func (h *Handler) serveFile(w http.ResponseWriter, r *http.Request, dir, name st
 		notFound(w)
 		return
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	f, err := root.Open(name)
 	if err != nil {
 		notFound(w)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		notFound(w)

@@ -163,7 +163,8 @@ func (f *incoming) copyTo(dst io.Writer) error {
 	return nil
 }
 
-var errTooLarge = errors.New(msgTooLarge)
+// The client-facing text is msgTooLarge; this sentinel only marks the condition.
+var errTooLarge = errors.New("file too large")
 
 // receive parses the multipart body, validates the single expected file part, stores it with
 // store, and calls done on success. Any failure removes what was stored and answers 400.

@@ -108,7 +108,7 @@ func readPassword(stdin io.Reader, stderr io.Writer) (string, error) {
 		return string(b), nil
 	}
 	line, err := bufio.NewReader(stdin).ReadString('\n')
-	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
+	if err != nil && (!errors.Is(err, io.EOF) || line == "") {
 		return "", errors.New("no password provided on stdin")
 	}
 	fmt.Fprintln(stderr)

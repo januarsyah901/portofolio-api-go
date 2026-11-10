@@ -60,9 +60,13 @@ func multipartBody(t *testing.T, parts ...filePart) (*bytes.Buffer, string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		pw.Write(p.data)
+		if _, err := pw.Write(p.data); err != nil {
+			t.Fatal(err)
+		}
 	}
-	mw.Close()
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
 	return &buf, mw.FormDataContentType()
 }
 
@@ -196,8 +200,8 @@ func TestUploadNoFile(t *testing.T) {
 	// multipart with only a text field
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
-	mw.WriteField("title", "x")
-	mw.Close()
+	must(t, mw.WriteField("title", "x"))
+	must(t, mw.Close())
 	for _, c := range []struct{ path, msg string }{
 		{"/api/admin/upload/image", "Tidak ada file yang diunggah."},
 		{"/api/admin/upload/cv", "Tidak ada file CV yang diunggah."},
@@ -315,7 +319,7 @@ func TestCVUpload(t *testing.T) {
 
 func TestCVRejectionsKeepExistingCV(t *testing.T) {
 	e := setup(t)
-	os.WriteFile(filepath.Join(e.dir, "cv.pdf"), pdfBytes, 0o644)
+	must(t, os.WriteFile(filepath.Join(e.dir, "cv.pdf"), pdfBytes, 0o644))
 	const msg = "Hanya file PDF yang diperbolehkan untuk CV."
 	cases := []struct {
 		name string
@@ -354,11 +358,11 @@ func get(e env, target string) *httptest.ResponseRecorder {
 
 func TestStaticServing(t *testing.T) {
 	e := setup(t)
-	os.WriteFile(filepath.Join(e.uploads, "a.png"), pngBytes, 0o644)
-	os.WriteFile(filepath.Join(e.dir, "cv.pdf"), pdfBytes, 0o644)
-	os.WriteFile(filepath.Join(e.dir, "secret.txt"), []byte("secret"), 0o644)
-	os.MkdirAll(filepath.Join(e.uploads, "sub"), 0o755)
-	os.WriteFile(filepath.Join(e.uploads, "sub", "b.png"), pngBytes, 0o644)
+	must(t, os.WriteFile(filepath.Join(e.uploads, "a.png"), pngBytes, 0o644))
+	must(t, os.WriteFile(filepath.Join(e.dir, "cv.pdf"), pdfBytes, 0o644))
+	must(t, os.WriteFile(filepath.Join(e.dir, "secret.txt"), []byte("secret"), 0o644))
+	must(t, os.MkdirAll(filepath.Join(e.uploads, "sub"), 0o755))
+	must(t, os.WriteFile(filepath.Join(e.uploads, "sub", "b.png"), pngBytes, 0o644))
 
 	rec := get(e, "/assets/uploads/a.png")
 	if rec.Code != 200 || !bytes.Equal(rec.Body.Bytes(), pngBytes) || rec.Header().Get("Content-Type") != "image/png" {
@@ -417,7 +421,7 @@ func TestStaticServing(t *testing.T) {
 		}
 	}
 	// cv.pdf missing / a directory
-	os.Remove(filepath.Join(e.dir, "cv.pdf"))
+	must(t, os.Remove(filepath.Join(e.dir, "cv.pdf")))
 	if rec = get(e, "/cv.pdf"); rec.Code != 404 || message(rec) != "Endpoint tidak ditemukan." {
 		t.Errorf("missing cv: %d", rec.Code)
 	}
@@ -425,7 +429,7 @@ func TestStaticServing(t *testing.T) {
 
 func TestStaticHeadAndMethods(t *testing.T) {
 	e := setup(t)
-	os.WriteFile(filepath.Join(e.dir, "cv.pdf"), pdfBytes, 0o644)
+	must(t, os.WriteFile(filepath.Join(e.dir, "cv.pdf"), pdfBytes, 0o644))
 	rec := httptest.NewRecorder()
 	e.mux.ServeHTTP(rec, httptest.NewRequest("HEAD", "/cv.pdf", nil))
 	if rec.Code != 200 || rec.Body.Len() != 0 {
@@ -435,5 +439,12 @@ func TestStaticHeadAndMethods(t *testing.T) {
 	e.mux.ServeHTTP(rec, httptest.NewRequest("POST", "/cv.pdf", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("post static: %d", rec.Code)
+	}
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

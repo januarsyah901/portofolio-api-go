@@ -298,10 +298,3 @@ func TestUpdateOnlyProvidedFields(t *testing.T) {
 		t.Errorf("unexpected input %+v", u)
 	}
 }
-
-func decode(t *testing.T, data []byte, v any) {
-	t.Helper()
-	if err := json.Unmarshal(data, v); err != nil {
-		t.Fatalf("decode %s: %v", data, err)
-	}
-}

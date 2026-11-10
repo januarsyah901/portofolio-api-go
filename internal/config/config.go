@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -22,6 +23,8 @@ type Config struct {
 	PublicDir   string
 	LogFormat   string // "text" or "json"
 	AppEnv      string // "development" or "production"
+	// TrustedProxies are peers whose X-Forwarded-For is believed (e.g. the reverse proxy).
+	TrustedProxies []netip.Prefix
 }
 
 // Load reads configuration from environment variables and validates it.
@@ -60,6 +63,11 @@ func load(getenv func(string) string) (Config, error) {
 	if cfg.AppEnv != "development" && cfg.AppEnv != "production" {
 		errs = append(errs, errors.New(`APP_ENV must be "development" or "production"`))
 	}
+	if proxies, perr := parsePrefixes(splitList(getenv("TRUSTED_PROXIES"))); perr != nil {
+		errs = append(errs, fmt.Errorf("TRUSTED_PROXIES: %w", perr))
+	} else {
+		cfg.TrustedProxies = proxies
+	}
 	if len(cfg.CORSOrigins) == 0 && cfg.AppEnv == "development" {
 		cfg.CORSOrigins = []string{"http://localhost:5173"}
 	}
@@ -89,4 +97,21 @@ func lowerAll(in []string) []string {
 		in[i] = strings.ToLower(in[i])
 	}
 	return in
+}
+
+func parsePrefixes(items []string) ([]netip.Prefix, error) {
+	out := make([]netip.Prefix, 0, len(items))
+	for _, s := range items {
+		if p, err := netip.ParsePrefix(s); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		ip, err := netip.ParseAddr(s)
+		if err != nil {
+			return nil, err
+		}
+		ip = ip.Unmap()
+		out = append(out, netip.PrefixFrom(ip, ip.BitLen()))
+	}
+	return out, nil
 }
