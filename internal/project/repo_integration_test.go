@@ -4,6 +4,7 @@ package project
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -190,5 +191,12 @@ func TestIntegrationRepoNotFoundAndUnknownID(t *testing.T) {
 	var unknown *UnknownIDError
 	if err := repo.Reorder(ctx, []int{5}); !errors.As(err, &unknown) || unknown.ID != 5 {
 		t.Errorf("Reorder: %v", err)
+	}
+}
+
+func decode(t *testing.T, data []byte, v any) {
+	t.Helper()
+	if err := json.Unmarshal(data, v); err != nil {
+		t.Fatalf("decode %s: %v", data, err)
 	}
 }
