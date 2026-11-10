@@ -10,7 +10,13 @@ import (
 
 // Register mounts this module's routes on mux.
 func Register(mux *http.ServeMux, d app.Deps) {
-	_ = mux
-	_ = d
-	// TODO: implement (see docs/PRD.md section 4).
+	register(mux, d, pgRepo{pool: d.Pool})
+}
+
+func register(mux *http.ServeMux, d app.Deps, repo Repo) {
+	h := &Handler{Repo: repo}
+	mux.HandleFunc("GET /api/site-content", h.list)
+	mux.HandleFunc("GET /api/site-content/{$}", h.list)
+	mux.Handle("PUT /api/site-content/{key}", d.Guards.AdminOrWrite(http.HandlerFunc(h.put)))
+	mux.Handle("DELETE /api/site-content/{key}", d.Guards.AdminOrWrite(http.HandlerFunc(h.delete)))
 }
