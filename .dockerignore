@@ -1,0 +1,6 @@
+.git
+bin
+.env
+public/assets/uploads/*
+public/cv.pdf
+coverage.out

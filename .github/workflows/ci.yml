@@ -1,0 +1,41 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: portfolio
+          POSTGRES_PASSWORD: portfolio
+          POSTGRES_DB: portfolio
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U portfolio"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://portfolio:portfolio@localhost:5432/portfolio?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Apply schema
+        run: for f in migrations/*.sql; do PGPASSWORD=portfolio psql -h localhost -U portfolio -d portfolio -v ON_ERROR_STOP=1 -f "$f"; done
+      - name: gofmt
+        run: test -z "$(gofmt -s -l .)" || (gofmt -s -l . && exit 1)
+      - run: go vet ./...
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+      - name: Unit tests (race)
+        run: go test -race -count=1 ./...
+      - name: Integration tests
+        run: go test -p 1 -tags=integration -count=1 ./...
+      - name: Docker build
+        run: docker build -t portofolio-api-go:ci .
