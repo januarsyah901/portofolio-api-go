@@ -216,7 +216,7 @@ M1, M2, dan M3 bisa dikerjakan paralel setelah M0 karena setiap modul berada di 
 3. Login dengan akun admin yang ada di DB produksi (hash bcrypt lama) berhasil.
 4. API token `pf_` yang dibuat versi Express diterima versi Go.
 5. Server menolak start tanpa `JWT_SECRET` yang valid.
-6. Image Docker < 30 MB dan berjalan sebagai non-root.
+6. Image Docker berbasis distroless dan berjalan sebagai non-root (target awal < 30 MB; hasil aktual ~37 MB tanpa kompresi karena berisi binary `api` dan `admin`).
 
 ## 12. Risiko
 

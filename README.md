@@ -13,7 +13,7 @@ implementations can be swapped without a migration.
   read back through the other.
 - **Tested.** 280+ tests, including table-driven validator tests, `httptest` handler tests with
   fake repositories, and integration tests against a real Postgres. The suite runs with `-race`.
-- **Small and safe to run.** A ~20 MB distroless image runs as non-root. The server shuts down
+- **Small and safe to run.** A distroless image (~37 MB uncompressed, two static binaries) runs as non-root. The server shuts down
   gracefully, logs with `log/slog`, and propagates request IDs.
 
 ## Architecture
