@@ -1,0 +1,2070 @@
+openapi: 3.1.0
+info:
+  title: Portfolio API
+  version: 1.0.0
+  description: |
+    Backend for the portfolio website and its admin panel: projects, testimonials,
+    TikTok blog videos, organisation/event experience, editable site sections,
+    file uploads and API token management.
+
+    **Errors.** Every error body has the shape `{"message": "..."}` with an
+    Indonesian message. Unknown routes, and known paths called with an
+    unsupported method, return `404 {"message": "Endpoint tidak ditemukan."}`.
+    An unhandled panic returns `500 {"message": "Terjadi kesalahan internal pada server."}`;
+    handled server errors return `500 {"message": "Terjadi kesalahan pada server."}`.
+
+    **JSON bodies.** Bodies are limited to 1 MB (larger bodies return 413).
+    Malformed JSON returns 400. An empty body, or a JSON value that is not an
+    object, is treated as `{}` (except on `PUT /api/site-content/{key}`, where a
+    non-object is reported as a validation error).
+
+    **Authentication.** Send `Authorization: Bearer <credential>`. A credential
+    starting with `pf_` is treated as an API token, anything else as an admin JWT
+    (HS256, claim `userId`, valid for 1 day). Three guards are used:
+
+    | Guard | Accepts |
+    |---|---|
+    | `jwtOnly` | admin JWT only (an API token is rejected as an invalid JWT) |
+    | `adminOrRead` | admin JWT, or any active API token (read or write scope); GET/HEAD only |
+    | `adminOrWrite` | admin JWT, or an active API token with scope `write` |
+
+    Each protected operation states its guard in `x-guard`. In the `security`
+    requirements, `apiToken: [write]` means a write-scoped token is required.
+
+    **HEAD.** Every GET route also answers HEAD.
+servers:
+  - url: http://localhost:3001
+    description: Local development
+
+tags:
+  - name: Health
+    description: Liveness and readiness probes.
+  - name: Auth
+    description: Admin login (username/password or Google) and current user.
+  - name: API Tokens
+    description: Management of `pf_` API tokens (admin JWT only).
+  - name: Projects
+    description: Portfolio projects.
+  - name: Testimonials
+    description: Client and colleague testimonials.
+  - name: Blog
+    description: TikTok blog video entries.
+  - name: Org Experience
+    description: Organisation and event experience entries.
+  - name: Site Content
+    description: Editable website sections (experience, skills, about, contact).
+  - name: Upload
+    description: Image and CV uploads (multipart, admin JWT only).
+  - name: Static
+    description: Files produced by the upload endpoints.
+
+paths:
+  # ------------------------------------------------------------------ Health
+  /api/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Liveness check
+      security: []
+      responses:
+        '200':
+          description: Server is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, message]
+                properties:
+                  status:
+                    type: string
+                    const: OK
+                  message:
+                    type: string
+              example:
+                status: OK
+                message: Server portfolio berjalan dengan baik.
+
+  /api/health/ready:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Readiness check (pings the database with a 2 s timeout)
+      security: []
+      responses:
+        '200':
+          description: Database reachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: OK
+        '503':
+          description: Database not configured or not reachable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Database tidak tersedia.
+
+  # ------------------------------------------------------------------ Auth
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Log in with username and password
+      description: Rate limited per client IP (TCP peer address) to 5 requests per minute, burst 5.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Credentials accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400':
+          description: Missing username/password, or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                missing:
+                  value: { message: 'Username dan password wajib diisi.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401':
+          description: Wrong username or password.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Username atau password salah.
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: Current admin user
+      x-guard: jwtOnly
+      security:
+        - adminJwt: []
+      responses:
+        '200':
+          description: The user identified by the JWT.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/UnauthorizedJwt' }
+        '404':
+          description: The user in the JWT no longer exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: User tidak ditemukan.
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/google-verify:
+    post:
+      tags: [Auth]
+      operationId: googleVerify
+      summary: Log in with a Google OAuth access token
+      description: |
+        The access token is checked against Google's userinfo endpoint. The returned
+        email must be in the admin allowlist (case-insensitive). An admin user with
+        that email as username is created on first login. Rate limited like `/api/auth/login`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoogleVerifyRequest' }
+      responses:
+        '200':
+          description: Google account accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400':
+          description: Missing access token, or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                missing:
+                  value: { message: 'Access token Google wajib disertakan.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401':
+          description: Google rejected the token, or `accessToken` is not a string.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Token Google tidak valid atau kedaluwarsa.
+        '403':
+          description: The Google email is not in the admin allowlist (or Google returned no email).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Akses ditolak. Email someone@example.com tidak memiliki izin admin.
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ------------------------------------------------------------------ API tokens
+  /api/admin/tokens:
+    get:
+      tags: [API Tokens]
+      operationId: listApiTokens
+      summary: List API tokens (including revoked), newest first
+      x-guard: jwtOnly
+      security:
+        - adminJwt: []
+      responses:
+        '200':
+          description: All tokens, ordered by `createdAt` desc. Hashes and secrets are never returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ApiToken' }
+        '401': { $ref: '#/components/responses/UnauthorizedJwt' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [API Tokens]
+      operationId: createApiToken
+      summary: Create an API token
+      description: |
+        At most 10 active (non-revoked) tokens may exist. The plaintext `token`
+        is returned only in this response; only its SHA-256 hash is stored.
+      x-guard: jwtOnly
+      security:
+        - adminJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApiTokenCreateRequest' }
+      responses:
+        '201':
+          description: Token created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiTokenCreated' }
+        '400':
+          description: Invalid name or scope, active-token limit reached, or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badName:
+                  value: { message: 'Nama token wajib diisi (1-60 karakter).' }
+                badScope:
+                  value: { message: 'Scope token harus "read" atau "write".' }
+                limit:
+                  value: { message: 'Maksimal 10 token aktif. Cabut token lama terlebih dahulu.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedJwt' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/tokens/{id}:
+    delete:
+      tags: [API Tokens]
+      operationId: revokeApiToken
+      summary: Revoke an API token
+      description: Sets `revokedAt`. The row is kept and still listed.
+      x-guard: jwtOnly
+      security:
+        - adminJwt: []
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Token revoked.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Token berhasil dicabut.
+        '400':
+          description: The id is not an integer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: ID token tidak valid.
+        '401': { $ref: '#/components/responses/UnauthorizedJwt' }
+        '404':
+          description: No active token with this id (missing or already revoked).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Token tidak ditemukan atau sudah dicabut.
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ------------------------------------------------------------------ Projects
+  /api/projects:
+    get:
+      tags: [Projects]
+      operationId: listPublicProjects
+      summary: List visible projects
+      description: Only `visible = true`, ordered by `featured` desc, then `order` asc.
+      security: []
+      responses:
+        '200':
+          description: Visible projects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Project' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: Create a project
+      description: |
+        When `slug` is missing, empty or null it is generated from the title
+        (slugified, then made unique with `-2`, `-3`, ...). An explicit slug is
+        slugified and must be unique.
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectCreate' }
+      responses:
+        '201':
+          description: Project created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400':
+          description: Validation failed or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                required:
+                  value: { message: 'Judul dan deskripsi proyek wajib diisi.' }
+                emptyTitle:
+                  value: { message: 'Field "title" harus berupa teks yang tidak kosong.' }
+                badNullable:
+                  value: { message: 'Field "imageUrl" harus berupa teks atau null.' }
+                badSlug:
+                  value: { message: 'Field "slug" harus mengandung huruf atau angka.' }
+                badCategory:
+                  value: { message: 'Field "category" harus salah satu dari: web, desktop, tool.' }
+                badStatus:
+                  value: { message: 'Field "status" harus salah satu dari: live, open-source, internal.' }
+                badHighlights:
+                  value: { message: 'Field "highlights" harus berupa daftar teks.' }
+                badFeatured:
+                  value: { message: 'Field "featured" harus true atau false.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '409':
+          description: The slug is already used by another project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Slug sudah dipakai proyek lain.
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/projects/admin-list:
+    get:
+      tags: [Projects]
+      operationId: listAllProjects
+      summary: List all projects (including hidden)
+      description: Ordered by `order` asc.
+      x-guard: adminOrRead
+      security:
+        - adminJwt: []
+        - apiToken: []
+      responses:
+        '200':
+          description: All projects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/projects/reorder:
+    put:
+      tags: [Projects]
+      operationId: reorderProjects
+      summary: Reorder projects
+      description: |
+        Sets `order = index + 1` for each id, in one transaction. Ids may be JSON
+        numbers or numeric strings and must be positive integers within int32.
+        Projects not listed keep their current order. If any id does not exist
+        the whole operation is rolled back.
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectReorderRequest' }
+      responses:
+        '200':
+          description: Order updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Urutan proyek berhasil diperbarui.
+        '400':
+          description: '`orderedIds` missing/not an array, an invalid id, an unknown id, or malformed JSON.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                notArray:
+                  value: { message: 'orderedIds harus berupa array dari ID proyek.' }
+                badId:
+                  value: { message: 'ID proyek tidak valid.' }
+                unknownId:
+                  value: { message: 'ID proyek tidak ditemukan: 42.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/projects/{slug}:
+    get:
+      tags: [Projects]
+      operationId: getProjectBySlug
+      summary: Get one visible project by slug
+      description: |
+        Hidden projects are reported as not found. The literal segment
+        `admin-list` is routed to `GET /api/projects/admin-list` instead.
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          example: my-portfolio-site
+      responses:
+        '200':
+          description: The project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '404':
+          description: No visible project with this slug.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Proyek tidak ditemukan.
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/projects/{id}:
+    put:
+      tags: [Projects]
+      operationId: updateProject
+      summary: Partially update a project
+      description: |
+        Only fields present in the body are changed. Sending `slug` as `""` or
+        `null` clears it. `tags`, `order` and `visible` with the wrong JSON type
+        are silently ignored.
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectUpdate' }
+      responses:
+        '200':
+          description: Updated project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400':
+          description: Invalid id, validation failed, or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badId:
+                  value: { message: 'ID proyek tidak valid.' }
+                emptyTitle:
+                  value: { message: 'Field "title" harus berupa teks yang tidak kosong.' }
+                badCategory:
+                  value: { message: 'Field "category" harus salah satu dari: web, desktop, tool.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404':
+          description: Project not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Proyek tidak ditemukan.
+        '409':
+          description: The slug is already used by another project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Slug sudah dipakai proyek lain.
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [Projects]
+      operationId: deleteProject
+      summary: Delete a project
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Project deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Proyek berhasil dihapus.
+        '400':
+          description: The id is not an integer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: ID proyek tidak valid.
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404':
+          description: Project not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Proyek tidak ditemukan.
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ------------------------------------------------------------------ Testimonials
+  /api/testimonials:
+    get:
+      tags: [Testimonials]
+      operationId: listPublicTestimonials
+      summary: List visible testimonials
+      description: Only `visible = true`, ordered by `createdAt` desc.
+      security: []
+      responses:
+        '200':
+          description: Visible testimonials.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Testimonial' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [Testimonials]
+      operationId: createTestimonial
+      summary: Create a testimonial
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestimonialCreate' }
+      responses:
+        '201':
+          description: Testimonial created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Testimonial' }
+        '400':
+          description: Validation failed or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                required:
+                  value: { message: 'Nama, peran (role), dan pesan testimonial wajib diisi.' }
+                notText:
+                  value: { message: 'Field "name" harus berupa teks.' }
+                badRating:
+                  value: { message: 'Field "rating" harus berupa bilangan bulat.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/testimonials/admin-list:
+    get:
+      tags: [Testimonials]
+      operationId: listAllTestimonials
+      summary: List all testimonials (including hidden)
+      description: Ordered by `createdAt` desc.
+      x-guard: adminOrRead
+      security:
+        - adminJwt: []
+        - apiToken: []
+      responses:
+        '200':
+          description: All testimonials.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Testimonial' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/testimonials/{id}:
+    put:
+      tags: [Testimonials]
+      operationId: updateTestimonial
+      summary: Update a testimonial
+      description: |
+        Fields present in the body overwrite the stored values. `rating` is applied
+        only when it is a number and `visible` only when it is a boolean; other types
+        are ignored. `company`/`avatarUrl` may be set to null; `name`/`role`/`text`
+        may not. Ids outside the int32 range are reported as 404.
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestimonialUpdate' }
+      responses:
+        '200':
+          description: Updated testimonial.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Testimonial' }
+        '400':
+          description: Invalid id, validation failed, or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badId:
+                  value: { message: 'ID testimonial tidak valid.' }
+                notNull:
+                  value: { message: 'Field "name" tidak boleh null.' }
+                notTextOrNull:
+                  value: { message: 'Field "company" harus berupa teks atau null.' }
+                badRating:
+                  value: { message: 'Field "rating" harus berupa bilangan bulat.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404':
+          description: Testimonial not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Testimonial tidak ditemukan.
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [Testimonials]
+      operationId: deleteTestimonial
+      summary: Delete a testimonial
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Testimonial deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Testimonial berhasil dihapus.
+        '400':
+          description: The id is not an integer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: ID testimonial tidak valid.
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404':
+          description: Testimonial not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Testimonial tidak ditemukan.
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ------------------------------------------------------------------ Blog
+  /api/blog:
+    get:
+      tags: [Blog]
+      operationId: listPublicBlogVideos
+      summary: List visible blog videos
+      description: Only `visible = true`, ordered by `order` asc.
+      security: []
+      responses:
+        '200':
+          description: Visible blog videos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BlogVideo' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [Blog]
+      operationId: createBlogVideo
+      summary: Create a blog video entry
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BlogVideoCreate' }
+      responses:
+        '201':
+          description: Entry created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BlogVideo' }
+        '400':
+          description: Validation failed or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                required:
+                  value: { message: 'ID Video TikTok wajib diisi.' }
+                notText:
+                  value: { message: 'Field "videoId" harus berupa teks.' }
+                badTags:
+                  value: { message: 'Field "tags" harus berupa daftar teks.' }
+                badOrder:
+                  value: { message: 'Field "order" harus berupa bilangan bulat.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/blog/admin-list:
+    get:
+      tags: [Blog]
+      operationId: listAllBlogVideos
+      summary: List all blog videos (including hidden)
+      description: Ordered by `order` asc.
+      x-guard: adminOrRead
+      security:
+        - adminJwt: []
+        - apiToken: []
+      responses:
+        '200':
+          description: All blog videos.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BlogVideo' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/blog/{id}:
+    put:
+      tags: [Blog]
+      operationId: updateBlogVideo
+      summary: Update a blog video entry
+      description: |
+        Fields present in the body overwrite the stored values. A non-array `tags`,
+        a non-number `order` and a non-boolean `visible` are ignored. `videoId` and
+        `caption` may not be null. Ids outside the int32 range are reported as 404.
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BlogVideoUpdate' }
+      responses:
+        '200':
+          description: Updated entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BlogVideo' }
+        '400':
+          description: Invalid id, validation failed, or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badId:
+                  value: { message: 'ID entry tidak valid.' }
+                notNull:
+                  value: { message: 'Field "caption" tidak boleh null.' }
+                badTags:
+                  value: { message: 'Field "tags" harus berupa daftar teks.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404':
+          description: Entry not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Entry video tidak ditemukan.
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [Blog]
+      operationId: deleteBlogVideo
+      summary: Delete a blog video entry
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Entry deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Entry video berhasil dihapus.
+        '400':
+          description: The id is not an integer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: ID entry tidak valid.
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404':
+          description: Entry not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Entry video tidak ditemukan.
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ------------------------------------------------------------------ Org experience
+  /api/org-experience:
+    get:
+      tags: [Org Experience]
+      operationId: listPublicOrgExperience
+      summary: List visible organisation/event entries
+      description: Only `visible = true`, ordered by `order` asc, then `id` asc.
+      security: []
+      responses:
+        '200':
+          description: Visible entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OrgExperience' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [Org Experience]
+      operationId: createOrgExperience
+      summary: Create an organisation/event entry
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrgExperienceCreate' }
+      responses:
+        '201':
+          description: Entry created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrgExperience' }
+        '400':
+          description: Validation failed or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                required:
+                  value: { message: 'Periode, nama organisasi/event, dan peran wajib diisi.' }
+                emptyField:
+                  value: { message: 'Field "period" harus berupa teks yang tidak kosong.' }
+                badType:
+                  value: { message: 'Field "type" harus salah satu dari: organization, event.' }
+                badLogo:
+                  value: { message: 'Field "logo" harus berupa teks atau null.' }
+                badOrder:
+                  value: { message: 'Field "order" harus berupa bilangan bulat.' }
+                badVisible:
+                  value: { message: 'Field "visible" harus true atau false.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/org-experience/admin-list:
+    get:
+      tags: [Org Experience]
+      operationId: listAllOrgExperience
+      summary: List all organisation/event entries (including hidden)
+      description: Ordered by `order` asc, then `id` asc.
+      x-guard: adminOrRead
+      security:
+        - adminJwt: []
+        - apiToken: []
+      responses:
+        '200':
+          description: All entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OrgExperience' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/org-experience/{id}:
+    put:
+      tags: [Org Experience]
+      operationId: updateOrgExperience
+      summary: Partially update an organisation/event entry
+      description: Only fields present in the body are changed. Ids outside the int32 range are reported as 404.
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrgExperienceUpdate' }
+      responses:
+        '200':
+          description: Updated entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrgExperience' }
+        '400':
+          description: Invalid id, validation failed, or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badId:
+                  value: { message: 'ID tidak valid.' }
+                emptyField:
+                  value: { message: 'Field "role" harus berupa teks yang tidak kosong.' }
+                badType:
+                  value: { message: 'Field "type" harus salah satu dari: organization, event.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404':
+          description: Entry not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Entri organisasi/event tidak ditemukan.
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [Org Experience]
+      operationId: deleteOrgExperience
+      summary: Delete an organisation/event entry
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Entry deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Entri organisasi/event berhasil dihapus.
+        '400':
+          description: The id is not an integer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: ID tidak valid.
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404':
+          description: Entry not found.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Entri organisasi/event tidak ditemukan.
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ------------------------------------------------------------------ Site content
+  /api/site-content:
+    get:
+      tags: [Site Content]
+      operationId: getSiteContent
+      summary: Get all stored site sections
+      description: |
+        Returns an object keyed by section name. Sections that were never saved
+        (or were deleted) are absent; the website then uses its built-in text.
+      security: []
+      responses:
+        '200':
+          description: Stored sections.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteContentMap' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/site-content/:
+    get:
+      tags: [Site Content]
+      operationId: getSiteContentTrailingSlash
+      summary: Get all stored site sections (trailing-slash alias)
+      description: Same handler as `GET /api/site-content`.
+      security: []
+      responses:
+        '200':
+          description: Stored sections.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteContentMap' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/site-content/{key}:
+    parameters:
+      - $ref: '#/components/parameters/SiteContentKey'
+    put:
+      tags: [Site Content]
+      operationId: putSiteContent
+      summary: Create or replace one site section
+      description: |
+        The body is the section value itself; its schema depends on `key`
+        (`experience` -> SiteExperience, `skills` -> SiteSkills, `about` -> SiteAbout,
+        `contact` -> SiteContact). Strings are trimmed and must be non-empty after
+        trimming; length limits count UTF-16 code units. Unknown fields are dropped.
+        Validation messages name the failing path, e.g. `"items[0].title" tidak boleh kosong.`
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/SiteExperience'
+                - $ref: '#/components/schemas/SiteSkills'
+                - $ref: '#/components/schemas/SiteAbout'
+                - $ref: '#/components/schemas/SiteContact'
+      responses:
+        '200':
+          description: Section saved (normalised value as stored).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteContentEntry' }
+        '400':
+          description: Validation failed or malformed JSON.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                notObject:
+                  value: { message: '"experience" harus berupa objek.' }
+                empty:
+                  value: { message: '"items[0].title" tidak boleh kosong.' }
+                tooLong:
+                  value: { message: '"eyebrow" maksimal 100 karakter.' }
+                notList:
+                  value: { message: '"items" harus berupa daftar.' }
+                tooManyItems:
+                  value: { message: '"categories" maksimal 12 item.' }
+                tooFewItems:
+                  value: { message: '"paragraphs" minimal 1 item.' }
+                badBool:
+                  value: { message: '"summary[0].accent" harus true atau false.' }
+                badLevel:
+                  value: { message: '"categories[0].skills[1].level" harus bilangan bulat 0-100.' }
+                badUrl:
+                  value: { message: '"github" harus berupa URL https://.' }
+                badEmail:
+                  value: { message: '"email" bukan alamat email yang valid.' }
+                invalidJson:
+                  value: { message: 'Body request harus berupa JSON yang valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404': { $ref: '#/components/responses/UnknownSection' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [Site Content]
+      operationId: deleteSiteContent
+      summary: Delete one site section (revert to built-in text)
+      description: Succeeds even if the section was not stored.
+      x-guard: adminOrWrite
+      security:
+        - adminJwt: []
+        - apiToken: [write]
+      responses:
+        '200':
+          description: Section removed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                message: Section "about" dihapus. Website memakai teks bawaan.
+        '401': { $ref: '#/components/responses/UnauthorizedAny' }
+        '403': { $ref: '#/components/responses/ForbiddenReadScope' }
+        '404': { $ref: '#/components/responses/UnknownSection' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ------------------------------------------------------------------ Upload
+  /api/admin/upload/image:
+    post:
+      tags: [Upload]
+      operationId: uploadImage
+      summary: Upload an image
+      description: |
+        Exactly one file part named `image`, at most 5 MB. The extension
+        (.jpg, .jpeg, .png, .gif, .webp), the part's Content-Type and the sniffed
+        file content must all be an accepted image type. Non-file form fields are
+        ignored. Stored as `public/assets/uploads/img-<unix-ms>-<random><ext>`.
+        Oversized files are reported as 400 `File too large` (not 413).
+      x-guard: jwtOnly
+      security:
+        - adminJwt: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  contentMediaType: image/*
+                  description: JPEG, PNG, GIF or WebP, max 5 MB.
+            encoding:
+              image:
+                contentType: image/jpeg, image/png, image/gif, image/webp
+      responses:
+        '200':
+          description: Image stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+                    description: Public path of the stored file.
+              example:
+                url: /assets/uploads/img-1762761600000-123456789.png
+        '400':
+          description: No file, wrong type, too large, unexpected file field, or malformed multipart body.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                noFile:
+                  value: { message: 'Tidak ada file yang diunggah.' }
+                badType:
+                  value: { message: 'Hanya file gambar (.jpg, .jpeg, .png, .gif, .webp) yang diperbolehkan.' }
+                tooLarge:
+                  value: { message: 'File too large' }
+                unexpectedField:
+                  value: { message: 'Unexpected field' }
+                badForm:
+                  value: { message: 'Permintaan multipart tidak valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedJwt' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/upload/cv:
+    post:
+      tags: [Upload]
+      operationId: uploadCv
+      summary: Upload (replace) the CV PDF
+      description: |
+        Exactly one file part named `cv`, at most 10 MB. Extension `.pdf`,
+        part Content-Type `application/pdf` and sniffed content must all be PDF.
+        Replaces `public/cv.pdf` atomically only after the whole request parsed.
+        Oversized files are reported as 400 `File too large` (not 413).
+      x-guard: jwtOnly
+      security:
+        - adminJwt: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [cv]
+              properties:
+                cv:
+                  type: string
+                  format: binary
+                  contentMediaType: application/pdf
+                  description: PDF, max 10 MB.
+            encoding:
+              cv:
+                contentType: application/pdf
+      responses:
+        '200':
+          description: CV replaced.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, message]
+                properties:
+                  url:
+                    type: string
+                    const: /cv.pdf
+                  message:
+                    type: string
+              example:
+                url: /cv.pdf
+                message: CV berhasil diperbarui.
+        '400':
+          description: No file, wrong type, too large, unexpected file field, or malformed multipart body.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                noFile:
+                  value: { message: 'Tidak ada file CV yang diunggah.' }
+                badType:
+                  value: { message: 'Hanya file PDF yang diperbolehkan untuk CV.' }
+                tooLarge:
+                  value: { message: 'File too large' }
+                unexpectedField:
+                  value: { message: 'Unexpected field' }
+                badForm:
+                  value: { message: 'Permintaan multipart tidak valid.' }
+        '401': { $ref: '#/components/responses/UnauthorizedJwt' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ------------------------------------------------------------------ Static
+  /assets/uploads/{file}:
+    get:
+      tags: [Static]
+      operationId: getUploadedFile
+      summary: Serve an uploaded file
+      description: |
+        Serves a regular file from `public/assets/uploads`. The route matches any
+        remaining path (`{file...}`), so `file` may contain `/`. Empty segments,
+        `.`/`..`, backslashes, directories and symlink escapes return 404.
+        Supports Range and conditional requests; sends `X-Content-Type-Options: nosniff`.
+      security: []
+      parameters:
+        - name: file
+          in: path
+          required: true
+          schema:
+            type: string
+          example: img-1762761600000-123456789.png
+      responses:
+        '200':
+          description: File content (Content-Type from the file extension/content).
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404': { $ref: '#/components/responses/EndpointNotFound' }
+
+  /cv.pdf:
+    get:
+      tags: [Static]
+      operationId: getCv
+      summary: Download the current CV
+      description: "Supports Range and conditional requests; sends `X-Content-Type-Options: nosniff`."
+      security: []
+      responses:
+        '200':
+          description: The CV.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404': { $ref: '#/components/responses/EndpointNotFound' }
+
+components:
+  securitySchemes:
+    adminJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Admin JWT from `/api/auth/login` or `/api/auth/google-verify`
+        (HS256, claim `userId`, expires after 1 day).
+    apiToken:
+      type: http
+      scheme: bearer
+      bearerFormat: pf_
+      description: |
+        API token created via `POST /api/admin/tokens`: `pf_` followed by 32 random
+        bytes in base64url. Scope `read` works on GET/HEAD `admin-list` routes;
+        scope `write` is additionally required for create/update/delete routes
+        (shown as `apiToken: [write]`). Revoked or unknown tokens get 401.
+        API tokens are never accepted on `jwtOnly` routes.
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      description: Numeric record id.
+      schema:
+        type: integer
+      example: 1
+    SiteContentKey:
+      name: key
+      in: path
+      required: true
+      description: Section name. Any other value returns 404.
+      schema:
+        type: string
+        enum: [experience, skills, about, contact]
+
+  responses:
+    UnauthorizedJwt:
+      description: Missing or invalid admin JWT (API tokens are rejected here as invalid JWTs).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            noToken:
+              value: { message: 'Akses ditolak. Token tidak ditemukan.' }
+            badJwt:
+              value: { message: 'Token tidak valid atau kedaluwarsa.' }
+    UnauthorizedAny:
+      description: Missing/invalid admin JWT, or unknown/revoked API token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            noToken:
+              value: { message: 'Akses ditolak. Token tidak ditemukan.' }
+            badJwt:
+              value: { message: 'Token tidak valid atau kedaluwarsa.' }
+            badApiToken:
+              value: { message: 'Token API tidak valid atau sudah dicabut.' }
+    ForbiddenReadScope:
+      description: The API token only has scope `read`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            message: Token API ini hanya memiliki scope read. Buat token dengan scope write untuk mengubah data.
+    PayloadTooLarge:
+      description: JSON body larger than 1 MB.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            message: Body request terlalu besar.
+    TooManyRequests:
+      description: Rate limit exceeded (5 requests per minute per client IP, burst 5).
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            example: 12
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            message: Terlalu banyak percobaan. Coba lagi nanti.
+    ServerError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            handled:
+              value: { message: 'Terjadi kesalahan pada server.' }
+            panic:
+              value: { message: 'Terjadi kesalahan internal pada server.' }
+    EndpointNotFound:
+      description: File not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            message: Endpoint tidak ditemukan.
+    UnknownSection:
+      description: Unknown section key.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            message: 'Section "footer" tidak dikenal. Pilihan: experience, skills, about, contact.'
+
+  schemas:
+    Error:
+      type: object
+      description: Error or informational message (Indonesian).
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    # ---------------- Auth
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+    GoogleVerifyRequest:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken:
+          type: string
+          minLength: 1
+          description: Google OAuth access token.
+    User:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+          description: Login name, or the Google email for Google-created users.
+    LoginResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+          description: Admin JWT, valid for 1 day.
+        user: { $ref: '#/components/schemas/User' }
+
+    # ---------------- API tokens
+    ApiToken:
+      type: object
+      required: [id, name, prefix, scope, createdAt, lastUsedAt, revokedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        prefix:
+          type: string
+          description: First 8 characters of the token (e.g. `pf_AbCdE`).
+          minLength: 8
+          maxLength: 8
+        scope:
+          type: string
+          enum: [read, write]
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: [string, 'null']
+          format: date-time
+        revokedAt:
+          type: [string, 'null']
+          format: date-time
+    ApiTokenCreated:
+      description: Public token fields plus the plaintext token, returned only once.
+      allOf:
+        - $ref: '#/components/schemas/ApiToken'
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              pattern: '^pf_[A-Za-z0-9_-]{43}$'
+              description: Plaintext API token. Store it now; it cannot be retrieved again.
+    ApiTokenCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Trimmed; 1-60 characters after trimming.
+          minLength: 1
+          maxLength: 60
+        scope:
+          type: string
+          enum: [read, write]
+          default: read
+          description: When present it must be exactly `read` or `write` (null is rejected).
+
+    # ---------------- Projects
+    Project:
+      type: object
+      required: [id, title, description, imageUrl, liveUrl, githubUrl, tags, slug, category,
+                 status, year, role, highlights, releaseUrl, featured, order, visible,
+                 createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: [string, 'null']
+        liveUrl:
+          type: [string, 'null']
+        githubUrl:
+          type: [string, 'null']
+        tags:
+          type: array
+          items:
+            type: string
+        slug:
+          type: [string, 'null']
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+        category:
+          $ref: '#/components/schemas/ProjectCategory'
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        year:
+          type: [string, 'null']
+        role:
+          type: [string, 'null']
+        highlights:
+          type: array
+          items:
+            type: string
+        releaseUrl:
+          type: [string, 'null']
+        featured:
+          type: boolean
+        order:
+          type: integer
+        visible:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProjectCategory:
+      type: string
+      enum: [web, desktop, tool]
+    ProjectStatus:
+      type: string
+      enum: [live, open-source, internal]
+    ProjectFields:
+      type: object
+      description: |
+        Writable project fields. Strings are trimmed. For the nullable text fields
+        an empty string is stored as null. `slug` is slugified (lowercase,
+        runs of characters outside `[a-z0-9]` become `-`, `-` trimmed at both ends).
+        `tags`, `order` and `visible` are lenient: a value of the wrong JSON type is
+        ignored; non-string items in `tags` are dropped; a fractional `order` is
+        truncated; an `order` outside int32 is ignored.
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          minLength: 1
+        slug:
+          type: [string, 'null']
+        imageUrl:
+          type: [string, 'null']
+        liveUrl:
+          type: [string, 'null']
+        githubUrl:
+          type: [string, 'null']
+        releaseUrl:
+          type: [string, 'null']
+        year:
+          type: [string, 'null']
+        role:
+          type: [string, 'null']
+        category:
+          $ref: '#/components/schemas/ProjectCategory'
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
+        highlights:
+          type: array
+          description: Items are trimmed; empty items are dropped.
+          items:
+            type: string
+        featured:
+          type: boolean
+        tags:
+          type: array
+          items:
+            type: string
+        order:
+          type: integer
+          minimum: -2147483648
+          maximum: 2147483647
+        visible:
+          type: boolean
+    ProjectCreate:
+      allOf:
+        - $ref: '#/components/schemas/ProjectFields'
+        - type: object
+          required: [title, description]
+    ProjectUpdate:
+      $ref: '#/components/schemas/ProjectFields'
+    ProjectReorderRequest:
+      type: object
+      required: [orderedIds]
+      properties:
+        orderedIds:
+          type: array
+          description: Project ids in the desired order (numbers or numeric strings).
+          items:
+            oneOf:
+              - type: integer
+                minimum: 1
+                maximum: 2147483647
+              - type: string
+                pattern: '^\s*[0-9]+(\.0*)?\s*$'
+          example: [3, 1, 2]
+
+    # ---------------- Testimonials
+    Testimonial:
+      type: object
+      required: [id, name, role, company, avatarUrl, text, rating, visible, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+        company:
+          type: [string, 'null']
+        avatarUrl:
+          type: [string, 'null']
+        text:
+          type: string
+        rating:
+          type: integer
+        visible:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    TestimonialCreate:
+      type: object
+      required: [name, role, text]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        role:
+          type: string
+          minLength: 1
+        text:
+          type: string
+          minLength: 1
+        company:
+          type: [string, 'null']
+          description: Any falsy value (missing, null, "", false, 0) is stored as null.
+        avatarUrl:
+          type: [string, 'null']
+          description: Any falsy value (missing, null, "", false, 0) is stored as null.
+        rating:
+          type: integer
+          default: 5
+          minimum: -2147483648
+          maximum: 2147483647
+          description: Non-number values are ignored; non-integer numbers are rejected. No 1-5 range check.
+        visible:
+          type: boolean
+          default: true
+          description: Non-boolean values are ignored.
+    TestimonialUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        text:
+          type: string
+        company:
+          type: [string, 'null']
+        avatarUrl:
+          type: [string, 'null']
+        rating:
+          type: integer
+          minimum: -2147483648
+          maximum: 2147483647
+          description: Non-number values are ignored; non-integer numbers are rejected.
+        visible:
+          type: boolean
+          description: Non-boolean values are ignored.
+
+    # ---------------- Blog
+    BlogVideo:
+      type: object
+      required: [id, videoId, caption, tags, order, visible, createdAt]
+      properties:
+        id:
+          type: integer
+        videoId:
+          type: string
+          description: TikTok video id.
+        caption:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        order:
+          type: integer
+        visible:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    BlogVideoCreate:
+      type: object
+      required: [videoId]
+      properties:
+        videoId:
+          type: string
+          minLength: 1
+        caption:
+          type: string
+          default: ''
+          description: A falsy value is stored as "".
+        tags:
+          type: array
+          default: []
+          description: A non-array value is ignored; an array with non-string items is rejected.
+          items:
+            type: string
+        order:
+          type: integer
+          default: 0
+          minimum: -2147483648
+          maximum: 2147483647
+          description: Non-number values are ignored; non-integer numbers are rejected.
+        visible:
+          type: boolean
+          default: true
+          description: Non-boolean values are ignored.
+    BlogVideoUpdate:
+      type: object
+      properties:
+        videoId:
+          type: string
+        caption:
+          type: string
+        tags:
+          type: array
+          description: A non-array value is ignored; an array with non-string items is rejected.
+          items:
+            type: string
+        order:
+          type: integer
+          minimum: -2147483648
+          maximum: 2147483647
+          description: Non-number values are ignored; non-integer numbers are rejected.
+        visible:
+          type: boolean
+          description: Non-boolean values are ignored.
+
+    # ---------------- Org experience
+    OrgExperience:
+      type: object
+      required: [id, period, organization, role, description, highlights, type, logo, order, visible, createdAt]
+      properties:
+        id:
+          type: integer
+        period:
+          type: string
+        organization:
+          type: string
+        role:
+          type: string
+        description:
+          type: string
+        highlights:
+          type: array
+          items:
+            type: string
+        type:
+          $ref: '#/components/schemas/OrgExperienceType'
+        logo:
+          type: [string, 'null']
+        order:
+          type: integer
+        visible:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    OrgExperienceType:
+      type: string
+      enum: [organization, event]
+    OrgExperienceFields:
+      type: object
+      description: |
+        Strings are trimmed; unknown fields are ignored. Unlike projects,
+        `order` and `visible` are strict: a wrong type is rejected with 400.
+      properties:
+        period:
+          type: string
+          minLength: 1
+        organization:
+          type: string
+          minLength: 1
+        role:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          default: ''
+        highlights:
+          type: array
+          default: []
+          description: Items are trimmed; empty items are dropped.
+          items:
+            type: string
+        type:
+          allOf:
+            - $ref: '#/components/schemas/OrgExperienceType'
+          default: organization
+        logo:
+          type: [string, 'null']
+          description: An empty string is stored as null.
+        order:
+          type: integer
+          default: 0
+          minimum: -2147483648
+          maximum: 2147483647
+        visible:
+          type: boolean
+          default: true
+    OrgExperienceCreate:
+      allOf:
+        - $ref: '#/components/schemas/OrgExperienceFields'
+        - type: object
+          required: [period, organization, role]
+    OrgExperienceUpdate:
+      $ref: '#/components/schemas/OrgExperienceFields'
+
+    # ---------------- Site content
+    SiteContentMap:
+      type: object
+      description: Stored sections keyed by name; missing keys mean "use built-in text".
+      properties:
+        experience: { $ref: '#/components/schemas/SiteExperience' }
+        skills: { $ref: '#/components/schemas/SiteSkills' }
+        about: { $ref: '#/components/schemas/SiteAbout' }
+        contact: { $ref: '#/components/schemas/SiteContact' }
+    SiteContentEntry:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+          enum: [experience, skills, about, contact]
+        value:
+          oneOf:
+            - $ref: '#/components/schemas/SiteExperience'
+            - $ref: '#/components/schemas/SiteSkills'
+            - $ref: '#/components/schemas/SiteAbout'
+            - $ref: '#/components/schemas/SiteContact'
+    SiteExperience:
+      type: object
+      required: [eyebrow, title, items]
+      properties:
+        eyebrow: { type: string, minLength: 1, maxLength: 100 }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        items:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [period, badge, title, role, description]
+            properties:
+              period: { type: string, minLength: 1, maxLength: 60 }
+              badge: { type: string, minLength: 1, maxLength: 80 }
+              accent:
+                type: boolean
+                default: false
+                description: Missing means false; null or other types are rejected.
+              title: { type: string, minLength: 1, maxLength: 200 }
+              role: { type: string, minLength: 1, maxLength: 120 }
+              description: { type: string, minLength: 1, maxLength: 2000 }
+    SiteSkills:
+      type: object
+      required: [eyebrow, title, categories]
+      properties:
+        eyebrow: { type: string, minLength: 1, maxLength: 100 }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        categories:
+          type: array
+          maxItems: 12
+          items:
+            type: object
+            required: [label, title, description, skills]
+            properties:
+              label: { type: string, minLength: 1, maxLength: 60 }
+              title: { type: string, minLength: 1, maxLength: 120 }
+              description: { type: string, minLength: 1, maxLength: 500 }
+              skills:
+                type: array
+                maxItems: 12
+                items:
+                  type: object
+                  required: [name, level]
+                  properties:
+                    name: { type: string, minLength: 1, maxLength: 80 }
+                    level: { type: integer, minimum: 0, maximum: 100 }
+    SiteAbout:
+      type: object
+      required: [eyebrow, name, paragraphs, summaryTitle, summary]
+      properties:
+        eyebrow: { type: string, minLength: 1, maxLength: 100 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        paragraphs:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { type: string, minLength: 1, maxLength: 2000 }
+        summaryTitle: { type: string, minLength: 1, maxLength: 100 }
+        summary:
+          type: array
+          maxItems: 12
+          items:
+            type: object
+            required: [label, value]
+            properties:
+              label: { type: string, minLength: 1, maxLength: 80 }
+              value: { type: string, minLength: 1, maxLength: 200 }
+              accent:
+                type: boolean
+                default: false
+                description: Missing means false; null or other types are rejected.
+    SiteContact:
+      type: object
+      required: [ctaTitle, ctaSubtitle, brandDesc, email, location, github, linkedin, x, instagram]
+      properties:
+        ctaTitle: { type: string, minLength: 1, maxLength: 120 }
+        ctaSubtitle: { type: string, minLength: 1, maxLength: 300 }
+        brandDesc: { type: string, minLength: 1, maxLength: 500 }
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 120
+          pattern: '^[^\s@]+@[^\s@]+\.[^\s@]+$'
+        location: { type: string, minLength: 1, maxLength: 120 }
+        github: { $ref: '#/components/schemas/HttpsUrl' }
+        linkedin: { $ref: '#/components/schemas/HttpsUrl' }
+        x: { $ref: '#/components/schemas/HttpsUrl' }
+        instagram: { $ref: '#/components/schemas/HttpsUrl' }
+    HttpsUrl:
+      type: string
+      format: uri
+      minLength: 1
+      maxLength: 300
+      pattern: '^[Hh][Tt][Tt][Pp][Ss]://\S+$'
+      description: Must start with https:// (case-insensitive) and contain no whitespace.

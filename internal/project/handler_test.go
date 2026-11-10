@@ -153,6 +153,9 @@ func TestHandlerStatusAndMessages(t *testing.T) {
 		msg    string
 	}{
 		{"list public", nil, "GET", "/api/projects", "", 200, ""},
+		// The repo would fail if reached: an id beyond int4 must be answered without a query.
+		{"update id beyond int32", func(f *fakeRepo) { f.err = errors.New("boom") }, "PUT", "/api/projects/9999999999", `{"title":"x"}`, 404, "Proyek tidak ditemukan."},
+		{"delete id beyond int32", func(f *fakeRepo) { f.err = errors.New("boom") }, "DELETE", "/api/projects/9999999999", "", 404, "Proyek tidak ditemukan."},
 		{"list public db error", func(f *fakeRepo) { f.err = errors.New("boom") }, "GET", "/api/projects", "", 500, "Terjadi kesalahan pada server."},
 		{"list admin", nil, "GET", "/api/projects/admin-list", "", 200, ""},
 		{"list admin db error", func(f *fakeRepo) { f.err = errors.New("boom") }, "GET", "/api/projects/admin-list", "", 500, "Terjadi kesalahan pada server."},

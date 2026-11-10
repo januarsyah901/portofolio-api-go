@@ -159,6 +159,11 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, msgInvalidID)
 		return
 	}
+	if id > maxPostgresInt32 || id < -maxPostgresInt32-1 {
+		// The id column is int4: such a row cannot exist, and Postgres would reject the parameter.
+		httpx.Error(w, http.StatusNotFound, msgNotFound)
+		return
+	}
 	fields, ok := httpx.DecodeObject(w, r)
 	if !ok {
 		return
@@ -185,6 +190,11 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := httpx.PathInt(r, "id")
 	if !ok {
 		httpx.Error(w, http.StatusBadRequest, msgInvalidID)
+		return
+	}
+	if id > maxPostgresInt32 || id < -maxPostgresInt32-1 {
+		// The id column is int4: such a row cannot exist, and Postgres would reject the parameter.
+		httpx.Error(w, http.StatusNotFound, msgNotFound)
 		return
 	}
 	err := h.repo.Delete(r.Context(), id)
