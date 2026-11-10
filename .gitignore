@@ -1,0 +1,6 @@
+/bin/
+.env
+public/assets/uploads/*
+!public/assets/uploads/.gitkeep
+public/cv.pdf
+coverage.out

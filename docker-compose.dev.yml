@@ -1,0 +1,18 @@
+# Dev/test database only. The schema comes from migrations/ (copied from the Prisma project).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: portofolio-go-db
+    environment:
+      POSTGRES_USER: portfolio
+      POSTGRES_PASSWORD: portfolio
+      POSTGRES_DB: portfolio
+    ports:
+      - "127.0.0.1:55434:5432"
+    volumes:
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portfolio"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
