@@ -3,10 +3,9 @@
 //	admin create-user <username>
 //	admin reset-password <username>
 //
-// DATABASE_URL is read from the environment. The password is read as a single
-// line from stdin (golang.org/x/term is not a dependency, so there is no echo
-// suppression): pipe it in (`printf '%s\n' "$PW" | admin create-user bob`) or
-// type it at the prompt knowing it will be visible.
+// DATABASE_URL is read from the environment. On a terminal the password is
+// prompted for without echo; otherwise it is read as one line from stdin
+// (`printf '%s\n' "$PW" | admin create-user bob`).
 package main
 
 import (
@@ -18,6 +17,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 
 	"github.com/januarsyah901/portofolio-api-go/internal/auth"
 	"github.com/januarsyah901/portofolio-api-go/internal/db"
@@ -91,10 +92,21 @@ func run(args []string, stdin io.Reader, stderr io.Writer, databaseURL string) e
 	return nil
 }
 
-// readPassword reads one line from stdin, stripping the line ending. Input is
-// not echo-suppressed (see package doc).
+// readPassword prompts without echo when stdin is a terminal, and otherwise reads
+// one line from stdin, stripping the line ending.
 func readPassword(stdin io.Reader, stderr io.Writer) (string, error) {
-	fmt.Fprint(stderr, "Password (input is visible; pipe via stdin to avoid this): ")
+	fmt.Fprint(stderr, "Password: ")
+	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		b, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(stderr)
+		if err != nil {
+			return "", fmt.Errorf("read password: %w", err)
+		}
+		if len(b) == 0 {
+			return "", errors.New("password must not be empty")
+		}
+		return string(b), nil
+	}
 	line, err := bufio.NewReader(stdin).ReadString('\n')
 	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
 		return "", errors.New("no password provided on stdin")

@@ -146,7 +146,7 @@ Semua deviasi dicatat di README bagian "Differences from the Express version".
 - **Keandalan:** graceful shutdown 10 detik pada SIGINT/SIGTERM. Timeout server: read 15 dtk, write 30 dtk, idle 60 dtk.
 - **Observabilitas:** `log/slog` JSON di produksi dan text di dev. Middleware access log (method, path, status, durasi, request id). Header `X-Request-ID`.
 - **Konfigurasi (env):** `PORT` (3001), `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `ADMIN_EMAILS`, `PUBLIC_DIR` (`./public`), `LOG_FORMAT` (`text|json`), `APP_ENV` (`development|production`).
-- **Kompatibilitas:** Go 1.27. Dependensi minimal: `pgx/v5`, `golang-jwt/jwt/v5`, `x/crypto/bcrypt`, `x/time/rate`. Routing memakai `net/http.ServeMux` standar (pattern method + wildcard) tanpa framework.
+- **Kompatibilitas:** Go 1.27. Dependensi minimal: `pgx/v5`, `golang-jwt/jwt/v5`, `x/crypto/bcrypt`. Rate limiter token bucket ditulis sendiri (tanpa `x/time/rate`). Routing memakai `net/http.ServeMux` standar (pattern method + wildcard) tanpa framework.
 
 ## 7. Arsitektur
 
