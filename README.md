@@ -74,6 +74,14 @@ Configuration (environment): `PORT`, `DATABASE_URL` (Prisma-style `?schema=publi
 `JWT_SECRET`, `CORS_ORIGINS`, `ADMIN_EMAILS`, `PUBLIC_DIR`, `LOG_FORMAT` (`text|json`),
 `APP_ENV` (`development|production`), `TRUSTED_PROXIES` (reverse-proxy CIDRs whose `X-Forwarded-For` is trusted for per-client rate limiting).
 
+## Deployment
+
+Every push to `main` runs lint and tests; on success CI publishes
+`ghcr.io/januarsyah901/portofolio-api-go:latest`. The production host pulls instead of exposing
+a self-hosted runner to a public repo: a systemd timer checks GHCR every 5 minutes, recreates only
+the API container when the image changes, and rolls back to the previous image if the API does not
+answer through the reverse proxy within 30 seconds.
+
 The API is documented in [`docs/openapi.yaml`](docs/openapi.yaml), and the full product
 requirements are in [`docs/PRD.md`](docs/PRD.md).
 
