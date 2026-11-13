@@ -20,8 +20,8 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
-	"github.com/januarsyah901/portofolio-api-go/internal/db"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/db"
 )
 
 const minPasswordLen = 12

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
+	"github.com/mrfroglab/portofolio-api-go/internal/httpx"
 )
 
 func fields(t *testing.T, js string) httpx.Fields {

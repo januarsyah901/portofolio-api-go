@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
+	"github.com/mrfroglab/portofolio-api-go/internal/httpx"
 )
 
 // Allowed values for Project.category and Project.status.

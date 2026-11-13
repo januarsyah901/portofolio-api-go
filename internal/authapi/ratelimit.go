@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
+	"github.com/mrfroglab/portofolio-api-go/internal/httpx"
 )
 
 // MsgTooManyAttempts is returned when a client exhausts its login budget (PRD S6).

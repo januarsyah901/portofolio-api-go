@@ -3,7 +3,7 @@ package authapi
 import (
 	"context"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/db"
+	"github.com/mrfroglab/portofolio-api-go/internal/db"
 )
 
 // User is the public projection of an "AdminUser" row.

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
-	"github.com/januarsyah901/portofolio-api-go/internal/testutil"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/testutil"
 )
 
 func TestIntegrationTokenLifecycle(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"math"
 	"net/http"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/db"
-	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
+	"github.com/mrfroglab/portofolio-api-go/internal/db"
+	"github.com/mrfroglab/portofolio-api-go/internal/httpx"
 )
 
 // Handler serves /api/org-experience.

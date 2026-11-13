@@ -12,8 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
-	"github.com/januarsyah901/portofolio-api-go/internal/db"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/db"
 )
 
 const testSecret = "0123456789abcdef0123456789abcdef"

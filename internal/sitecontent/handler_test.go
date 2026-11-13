@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/app"
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/app"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
 )
 
 type fakeRepo struct {

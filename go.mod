@@ -1,4 +1,4 @@
-module github.com/januarsyah901/portofolio-api-go
+module github.com/mrfroglab/portofolio-api-go
 
 go 1.27.3
 

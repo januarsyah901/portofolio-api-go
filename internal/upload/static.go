@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
+	"github.com/mrfroglab/portofolio-api-go/internal/httpx"
 )
 
 func notFound(w http.ResponseWriter) { httpx.Error(w, http.StatusNotFound, httpx.MsgNotFound) }

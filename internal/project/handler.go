@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/db"
-	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
+	"github.com/mrfroglab/portofolio-api-go/internal/db"
+	"github.com/mrfroglab/portofolio-api-go/internal/httpx"
 )
 
 // Messages identical to the Express version.

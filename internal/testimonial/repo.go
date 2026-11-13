@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/db"
+	"github.com/mrfroglab/portofolio-api-go/internal/db"
 )
 
 // Testimonial mirrors the Prisma model (camelCase keys, nullable columns as pointers).

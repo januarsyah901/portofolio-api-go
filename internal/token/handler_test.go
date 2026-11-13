@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
 )
 
 const testSecret = "0123456789abcdef0123456789abcdef"

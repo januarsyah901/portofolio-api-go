@@ -5,7 +5,7 @@ package blog
 import (
 	"net/http"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/app"
+	"github.com/mrfroglab/portofolio-api-go/internal/app"
 )
 
 // Register mounts this module's routes on mux.

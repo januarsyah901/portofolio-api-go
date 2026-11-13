@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
+	"github.com/mrfroglab/portofolio-api-go/internal/httpx"
 )
 
 // Handler serves /api/site-content.

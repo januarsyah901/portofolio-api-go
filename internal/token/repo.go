@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
-	"github.com/januarsyah901/portofolio-api-go/internal/db"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/db"
 )
 
 // ErrLimitReached means auth.MaxActiveTokens active tokens already exist.

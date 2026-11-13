@@ -4,9 +4,9 @@ package authapi
 import (
 	"net/http"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/app"
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
-	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
+	"github.com/mrfroglab/portofolio-api-go/internal/app"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/httpx"
 )
 
 // Register mounts the auth routes. Login and google-verify are rate limited per client IP.

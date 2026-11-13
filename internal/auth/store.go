@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/db"
+	"github.com/mrfroglab/portofolio-api-go/internal/db"
 )
 
 // PGTokenStore implements TokenStore on the "ApiToken" table.

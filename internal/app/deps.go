@@ -4,8 +4,8 @@ package app
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
-	"github.com/januarsyah901/portofolio-api-go/internal/config"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/config"
 )
 
 // Deps is everything a module needs to mount its routes.

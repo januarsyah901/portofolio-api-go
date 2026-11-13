@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/app"
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
-	"github.com/januarsyah901/portofolio-api-go/internal/config"
-	"github.com/januarsyah901/portofolio-api-go/internal/db"
-	"github.com/januarsyah901/portofolio-api-go/internal/server"
+	"github.com/mrfroglab/portofolio-api-go/internal/app"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/config"
+	"github.com/mrfroglab/portofolio-api-go/internal/db"
+	"github.com/mrfroglab/portofolio-api-go/internal/server"
 )
 
 func main() {

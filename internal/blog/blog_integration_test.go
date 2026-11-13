@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/app"
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
-	"github.com/januarsyah901/portofolio-api-go/internal/testutil"
+	"github.com/mrfroglab/portofolio-api-go/internal/app"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/testutil"
 )
 
 func TestIntegrationCRUD(t *testing.T) {

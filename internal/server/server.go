@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/app"
-	"github.com/januarsyah901/portofolio-api-go/internal/authapi"
-	"github.com/januarsyah901/portofolio-api-go/internal/blog"
-	"github.com/januarsyah901/portofolio-api-go/internal/httpx"
-	"github.com/januarsyah901/portofolio-api-go/internal/orgexp"
-	"github.com/januarsyah901/portofolio-api-go/internal/project"
-	"github.com/januarsyah901/portofolio-api-go/internal/sitecontent"
-	"github.com/januarsyah901/portofolio-api-go/internal/testimonial"
-	"github.com/januarsyah901/portofolio-api-go/internal/token"
-	"github.com/januarsyah901/portofolio-api-go/internal/upload"
+	"github.com/mrfroglab/portofolio-api-go/internal/app"
+	"github.com/mrfroglab/portofolio-api-go/internal/authapi"
+	"github.com/mrfroglab/portofolio-api-go/internal/blog"
+	"github.com/mrfroglab/portofolio-api-go/internal/httpx"
+	"github.com/mrfroglab/portofolio-api-go/internal/orgexp"
+	"github.com/mrfroglab/portofolio-api-go/internal/project"
+	"github.com/mrfroglab/portofolio-api-go/internal/sitecontent"
+	"github.com/mrfroglab/portofolio-api-go/internal/testimonial"
+	"github.com/mrfroglab/portofolio-api-go/internal/token"
+	"github.com/mrfroglab/portofolio-api-go/internal/upload"
 )
 
 // New returns the fully wired API handler.

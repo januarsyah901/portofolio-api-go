@@ -4,8 +4,8 @@ package token
 import (
 	"net/http"
 
-	"github.com/januarsyah901/portofolio-api-go/internal/app"
-	"github.com/januarsyah901/portofolio-api-go/internal/auth"
+	"github.com/mrfroglab/portofolio-api-go/internal/app"
+	"github.com/mrfroglab/portofolio-api-go/internal/auth"
 )
 
 // Register mounts the token routes; all require an admin JWT.
